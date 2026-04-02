@@ -4,50 +4,53 @@ import os
 
 app = FastAPI()
 
-# 환경변수에서 VWorld 키 가져오기
 VWORLD_KEY = os.getenv("VWORLD_KEY")
 
 
 @app.get("/")
 def root():
-    return {"status": "proxy server running"}
+    return {"status": "proxy running"}
 
 
-@app.get("/parcel")
-def get_parcel(bbox: str):
-    # 1️⃣ 키 확인
-    if not VWORLD_KEY:
-        return {"error": "VWORLD_KEY missing"}
-
-    # 2️⃣ bbox 확인
-    if not bbox:
-        return {"error": "bbox missing"}
+# 1️⃣ 좌표 → PNU 조회
+@app.get("/pnu")
+def get_pnu(lat: float, lng: float):
 
     url = (
-        f"https://api.vworld.kr/req/wfs?"
-        f"key={VWORLD_KEY}"
-        f"&service=WFS"
+        f"https://api.vworld.kr/req/data?"
+        f"service=data"
         f"&request=GetFeature"
-        f"&typename=lp_pa_cbnd_bonbun"
-        f"&output=application/json"
-        f"&bbox={bbox}"
+        f"&data=LP_PA_CBND_BUBUN"
+        f"&key={VWORLD_KEY}"
+        f"&geomFilter=POINT({lng} {lat})"
+        f"&geometry=true"
+        f"&size=1"
     )
 
+    res = requests.get(url)
+    data = res.json()
+
     try:
-        res = requests.get(url)
+        feature = data["response"]["result"]["featureCollection"]["features"][0]
+        pnu = feature["properties"]["pnu"]
+        return {"pnu": pnu}
+    except:
+        return {"error": "pnu not found", "raw": data}
 
-        # 3️⃣ 상태코드 확인
-        if res.status_code != 200:
-            return {
-                "error": "vworld request failed",
-                "status_code": res.status_code,
-                "text": res.text[:200]
-            }
 
-        # 4️⃣ JSON 파싱
-        data = res.json()
+# 2️⃣ PNU → polygon 조회
+@app.get("/polygon")
+def get_polygon(pnu: str):
 
-        return data
+    url = (
+        f"https://api.vworld.kr/req/data?"
+        f"service=data"
+        f"&request=GetFeature"
+        f"&data=LP_PA_CBND_BUBUN"
+        f"&key={VWORLD_KEY}"
+        f"&attrFilter=pnu:like:{pnu}"
+        f"&geometry=true"
+    )
 
-    except Exception as e:
-        return {"error": str(e)}
+    res = requests.get(url)
+    return res.json()
